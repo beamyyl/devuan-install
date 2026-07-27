@@ -163,12 +163,18 @@ DEVUAN_SUITE="${DEVUAN_SUITE}"
 NEW_HOSTNAME="${NEW_HOSTNAME}"
 GRUB_DISK="${GRUB_DISK}"
 
-# Configure APT sources
-cat > /etc/apt/sources.list <<EOF
+# Configure APT sources based on suite type
+if [ "\${DEVUAN_SUITE}" = "testing" ]; then
+    cat > /etc/apt/sources.list <<EOF
+deb https://deb.devuan.org/merged \${DEVUAN_SUITE} main contrib non-free non-free-firmware
+EOF
+else
+    cat > /etc/apt/sources.list <<EOF
 deb https://deb.devuan.org/merged \${DEVUAN_SUITE} main contrib non-free non-free-firmware
 deb https://deb.devuan.org/merged \${DEVUAN_SUITE}-updates main contrib non-free non-free-firmware
 deb https://deb.devuan.org/merged \${DEVUAN_SUITE}-security main contrib non-free non-free-firmware
 EOF
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt update
@@ -248,7 +254,7 @@ else
     info "Skipping user creation."
 fi
 
-info "Installation complete inside chroot!"
+info "Installation complete!"
 CHROOT_EOF
 
 chmod +x /mnt/root/chroot-install.sh
