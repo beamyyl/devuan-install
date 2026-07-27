@@ -130,7 +130,7 @@ info "============================================================"
 echo ""
 
 info "Bootstrapping Devuan $DEVUAN_SUITE..."
-debootstrap --arch=amd64 "$DEVUAN_SUITE" /mnt https://deb.devuan.org/merged
+debootstrap --arch=amd64 --no-check-gpg "$DEVUAN_SUITE" /mnt https://deb.devuan.org/merged
 
 # =============================================================================
 # fstab
