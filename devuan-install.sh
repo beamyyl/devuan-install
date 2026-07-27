@@ -15,9 +15,9 @@ ask()   { echo -e "${CYAN}[INPUT]${NC} $*"; }
 # =============================================================================
 # Sanity checks
 # =============================================================================
-for cmd in debootstrap chroot mountpoint; do
+for cmd in debootstrap chroot mountpoint genfstab blkid; do
     command -v "$cmd" &>/dev/null \
-        || die "'$cmd' not found. Ensure you are running from a Linux live environment with debootstrap installed."
+        || die "'$cmd' not found. Ensure you are running from a Linux live environment with debootstrap and arch-install-scripts/util-linux installed."
 done
 
 # =============================================================================
@@ -140,12 +140,7 @@ info " FSTAB"
 info "============================================================"
 
 info "Generating /etc/fstab..."
-genfstab -U /mnt > /mnt/etc/fstab 2>/dev/null || {
-    info "genfstab not found, writing fstab manually using UUIDs..."
-    cat > /mnt/etc/fstab <<EOF
-# /etc/fstab: static file system information.
-EOF
-}
+genfstab -U /mnt > /mnt/etc/fstab || die "Failed to generate /etc/fstab."
 
 # =============================================================================
 # In-chroot script
@@ -180,8 +175,13 @@ apt update
 apt install -y devuan-keyring
 apt update
 
-# Install kernel, firmware, device manager (eudev), and basic tools
-apt install -y linux-image-amd64 firmware-linux-free firmware-sof-signed eudev vim nano network-manager
+# Install kernel, firmware, device manager (eudev), locales, and basic tools
+apt install -y linux-image-amd64 firmware-linux-free firmware-sof-signed eudev vim nano network-manager locales tzdata
+
+# Set timezone and locales
+ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+locale-gen
 
 echo "\${NEW_HOSTNAME}" > /etc/hostname
 cat > /etc/hosts <<EOF
@@ -196,11 +196,9 @@ EOF
 if [ "\${INIT_SYSTEM}" = "openrc" ]; then
     info "Configuring OpenRC..."
     apt install -y openrc sysvinit-core-
-    apt install -y networkmanager-openrc
 else
     info "Configuring SysVinit..."
     apt install -y sysvinit-core
-    apt install -y networkmanager
 fi
 
 # ---------------------------------------------------------------------------
@@ -268,7 +266,7 @@ echo ""
 mount -t proc /proc /mnt/proc
 mount --bind /sys /mnt/sys
 mount --bind /dev /mnt/dev
-mount --bind /run /mnt/run
+mount -t tmpfs tmpfs /mnt/run
 
 chroot /mnt /bin/bash /root/chroot-install.sh
 
@@ -282,7 +280,11 @@ info "============================================================"
 rm -f /mnt/root/chroot-install.sh
 
 info "Unmounting filesystems..."
-umount -R /mnt 2>/dev/null
+umount /mnt/proc /mnt/sys /mnt/dev /mnt/run 2>/dev/null || true
+if [ "$BOOT_MODE" = "uefi" ]; then
+    umount /mnt/boot/efi 2>/dev/null || true
+fi
+umount -R /mnt 2>/dev/null || true
 
 echo ""
 info "============================================================"
