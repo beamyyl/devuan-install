@@ -32,21 +32,6 @@ echo ""
 info "This script will bootstrap Devuan to /mnt using debootstrap."
 info "Your partitions must be formatted and mounted BEFORE continuing."
 echo ""
-echo "  Mount commands (UEFI):"
-echo ""
-echo "    mount /dev/sdaR /mnt"
-echo "    mkdir -p /mnt/boot/efi"
-echo "    mount /dev/sdaB /mnt/boot/efi"
-echo "    swapon /dev/sdaX"
-echo ""
-echo "  Mount commands (BIOS):"
-echo ""
-echo "    mount /dev/sdaR /mnt"
-echo "    swapon /dev/sdaX"
-echo ""
-warn "If your partitions are NOT yet mounted, press Ctrl+C now,"
-warn "mount them, then re-run this script."
-echo ""
 read -rp "  Press ENTER once your partitions are mounted..."
 echo ""
 
@@ -58,7 +43,7 @@ echo ""
 # Boot mode, init system selection
 # =============================================================================
 info "============================================================"
-info " BOOT MODE, INIT SYSTEM, RELEASE"
+info " BOOT MODE, INIT SYSTEM, SUITE"
 info "============================================================"
 echo ""
 
@@ -90,7 +75,7 @@ fi
 echo ""
 
 ask "Init system?"
-ask "  1) SysVinit"
+ask "  1) SysVinit (default)"
 ask "  2) OpenRC"
 read -rp "  Choice [1/2]: " INIT_CHOICE
 case "$INIT_CHOICE" in
@@ -100,18 +85,18 @@ case "$INIT_CHOICE" in
 esac
 echo ""
 
-ask "Devuan release suite?"
-ask "  1) testing (excalibur / current rolling)"
-ask "  2) daedalus (stable)"
-read -rp "  Choice [1/2]: " RELEASE_CHOICE
-case "$RELEASE_CHOICE" in
-    1) DEVUAN_SUITE="testing"  ;;
-    2) DEVUAN_SUITE="daedalus" ;;
+ask "Devuan suite?"
+ask "  1) stable"
+ask "  2) testing"
+read -rp "  Choice [1/2]: " SUITE_CHOICE
+case "$SUITE_CHOICE" in
+    1) DEVUAN_SUITE="stable"  ;;
+    2) DEVUAN_SUITE="testing" ;;
     *) die "Invalid choice. Enter 1 or 2." ;;
 esac
 echo ""
 
-info "Selected: boot=$BOOT_MODE  init=$INIT_SYSTEM  suite=$DEVUAN_SUITE"
+info "Selected: suite=$DEVUAN_SUITE  boot=$BOOT_MODE  init=$INIT_SYSTEM"
 echo ""
 
 # =============================================================================
@@ -128,9 +113,9 @@ read -rp "  Hostname: " NEW_HOSTNAME
 echo ""
 
 info "Configuration summary:"
+echo "   Suite     : $DEVUAN_SUITE"
 echo "   Boot mode : $BOOT_MODE"
 echo "   Init      : $INIT_SYSTEM"
-echo "   Suite     : $DEVUAN_SUITE"
 echo "   Hostname  : $NEW_HOSTNAME"
 echo ""
 read -rp "  Press ENTER to begin bootstrapping..."
@@ -144,13 +129,8 @@ info " BASE INSTALL (DEBOOTSTRAP)"
 info "============================================================"
 echo ""
 
-DEBOOTSTRAP_OPTS=""
-if [ "$INIT_SYSTEM" = "openrc" ]; then
-    DEBOOTSTRAP_OPTS="--include=openrc,sysvinit-core-"
-fi
-
 info "Bootstrapping Devuan $DEVUAN_SUITE..."
-debootstrap --arch=amd64 $DEBOOTSTRAP_OPTS "$DEVUAN_SUITE" /mnt https://deb.devuan.org/merged
+debootstrap --arch=amd64 "$DEVUAN_SUITE" /mnt https://deb.devuan.org/merged
 
 # =============================================================================
 # fstab
@@ -161,17 +141,11 @@ info "============================================================"
 
 info "Generating /etc/fstab..."
 genfstab -U /mnt > /mnt/etc/fstab 2>/dev/null || {
-    # Fallback if genfstab (arch-install-scripts) isn't present on the host
     info "genfstab not found, writing fstab manually using UUIDs..."
-    gen_uuid() { blkid -s UUID -o value "$1"; }
     cat > /mnt/etc/fstab <<EOF
 # /etc/fstab: static file system information.
 EOF
 }
-
-info "fstab contents:"
-cat /mnt/etc/fstab
-echo ""
 
 # =============================================================================
 # In-chroot script
@@ -203,9 +177,11 @@ EOF
 
 export DEBIAN_FRONTEND=noninteractive
 apt update
+apt install -y devuan-keyring
+apt update
 
-# Install kernel, firmware, and basic tools
-apt install -y linux-image-amd64 firmware-linux-free firmware-sof-signed vim nano network-manager
+# Install kernel, firmware, device manager (eudev), and basic tools
+apt install -y linux-image-amd64 firmware-linux-free firmware-sof-signed eudev vim nano network-manager
 
 echo "\${NEW_HOSTNAME}" > /etc/hostname
 cat > /etc/hosts <<EOF
@@ -218,9 +194,13 @@ EOF
 # Init-specific adjustments
 # ---------------------------------------------------------------------------
 if [ "\${INIT_SYSTEM}" = "openrc" ]; then
-    info "Configuring OpenRC services..."
-    apt install -y openrc-core networkmanager-openrc
-    rc-update add NetworkManager default
+    info "Configuring OpenRC..."
+    apt install -y openrc sysvinit-core-
+    apt install -y networkmanager-openrc
+else
+    info "Configuring SysVinit..."
+    apt install -y sysvinit-core
+    apt install -y networkmanager
 fi
 
 # ---------------------------------------------------------------------------
@@ -270,13 +250,7 @@ else
     info "Skipping user creation."
 fi
 
-# ---------------------------------------------------------------------------
-# Done
-# ---------------------------------------------------------------------------
-echo ""
-info "============================================================"
-info " Installation complete!"
-info "============================================================"
+info "Installation complete inside chroot!"
 CHROOT_EOF
 
 chmod +x /mnt/root/chroot-install.sh
