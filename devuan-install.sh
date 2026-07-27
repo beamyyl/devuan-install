@@ -129,8 +129,11 @@ info " BASE INSTALL (DEBOOTSTRAP)"
 info "============================================================"
 echo ""
 
-info "Bootstrapping Devuan $DEVUAN_SUITE..."
-debootstrap --arch=amd64 --no-check-gpg "$DEVUAN_SUITE" /mnt https://deb.devuan.org/merged /usr/share/debootstrap/scripts/debian
+if [ "$DEVUAN_SUITE" = "stable" ]; then
+    ln -sf /usr/share/debootstrap/scripts/stable /usr/share/debootstrap/scripts/daedalus
+else
+    ln -sf /usr/share/debootstrap/scripts/testing /usr/share/debootstrap/scripts/excalibur
+fi
 
 # =============================================================================
 # fstab
